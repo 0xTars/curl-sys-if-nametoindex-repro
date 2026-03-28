@@ -29,7 +29,7 @@ jobs:
         shell: pwsh
         run: |
           Push-Location rust-src
-          python configure.py `
+          python src/bootstrap/configure.py `
             --build=x86_64-pc-windows-msvc `
             --enable-lld `
             --enable-verbose-tests `
@@ -42,8 +42,10 @@ jobs:
             --set build.print-step-timings `
             --set build.metrics `
             --set rust.lld=true `
-            --set build.optimized-compiler-builtins
+            --set build.optimized-compiler-builtins *>&1 | Tee-Object ..\xpy-baseline-configure.log
+          $code = $LASTEXITCODE
           Pop-Location
+          exit $code
 
       - name: Run x.py baseline
         shell: pwsh
@@ -70,7 +72,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: xpy-baseline-log
-          path: xpy-baseline.log
+          path: |
+            xpy-baseline-configure.log
+            xpy-baseline.log
 
   xpy-patched:
     runs-on: windows-2025
@@ -91,7 +95,7 @@ jobs:
         shell: pwsh
         run: |
           Push-Location rust-src
-          python configure.py `
+          python src/bootstrap/configure.py `
             --build=x86_64-pc-windows-msvc `
             --enable-lld `
             --enable-verbose-tests `
@@ -104,8 +108,10 @@ jobs:
             --set build.print-step-timings `
             --set build.metrics `
             --set rust.lld=true `
-            --set build.optimized-compiler-builtins
+            --set build.optimized-compiler-builtins *>&1 | Tee-Object ..\xpy-patched-configure.log
+          $code = $LASTEXITCODE
           Pop-Location
+          exit $code
 
       - name: Fetch Cargo dependencies
         shell: pwsh
@@ -165,4 +171,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: xpy-patched-log
-          path: xpy-patched.log
+          path: |
+            xpy-patched-configure.log
+            xpy-patched.log

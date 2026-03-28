@@ -6,96 +6,112 @@ on:
     branches:
       - main
 
+env:
+  CARGO_HOME: C:\Users\runneradmin\.cargo
+
 jobs:
-  minimal:
+  xpy-baseline:
     runs-on: windows-2025
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Build minimal baseline
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          cargo build -vv *>&1 | Tee-Object minimal.log
-          exit $LASTEXITCODE
-
-      - name: Inspect minimal result
-        shell: pwsh
-        run: |
-          $log = Get-Content minimal.log -Raw
-          if ($log -match '__imp_if_nametoindex') {
-            Write-Host 'minimal repro hit __imp_if_nametoindex'
-          } else {
-            Write-Host 'minimal repro did not hit __imp_if_nametoindex'
-          }
-
-      - name: Upload minimal log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: minimal-log
-          path: minimal.log
-
-  cargo-baseline:
-    runs-on: windows-2025
-    timeout-minutes: 30
-    steps:
       - uses: actions/checkout@v5
+        with:
+          repository: rust-lang/rust
+          ref: f0ff0628bc708f087e33d57efe406b8cff323a1f
+          submodules: recursive
+          path: rust-src
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: actions/checkout@v5
-        with:
-          repository: rust-lang/cargo
-          ref: 8e799e11cd904bf8682f106b805e619b544cf412
-          path: cargo-src
+      - name: Configure Rust baseline
+        shell: pwsh
+        run: |
+          Push-Location rust-src
+          python configure.py `
+            --build=x86_64-pc-windows-msvc `
+            --enable-lld `
+            --enable-verbose-tests `
+            --enable-sccache `
+            --disable-manage-submodules `
+            --enable-locked-deps `
+            --enable-cargo-native-static `
+            --set rust.codegen-units-std=1 `
+            --set llvm.download-ci-llvm=if-unchanged `
+            --set build.print-step-timings `
+            --set build.metrics `
+            --set rust.lld=true `
+            --set build.optimized-compiler-builtins
+          Pop-Location
 
-      - name: Build Cargo all-static
+      - name: Run x.py baseline
         shell: pwsh
         continue-on-error: true
         run: |
-          Push-Location cargo-src
-          cargo build -vv --release --features all-static -p cargo *>&1 | Tee-Object ..\cargo-baseline.log
+          Push-Location rust-src
+          python x.py --stage 2 test src/tools/cargo *>&1 | Tee-Object ..\xpy-baseline.log
           $code = $LASTEXITCODE
           Pop-Location
           exit $code
 
-      - name: Check Cargo baseline failure shape
+      - name: Inspect x.py baseline result
         shell: pwsh
         run: |
-          $log = Get-Content cargo-baseline.log -Raw
-          if ($log -notmatch '__imp_if_nametoindex') {
-            throw 'cargo baseline did not fail with __imp_if_nametoindex'
+          $log = Get-Content xpy-baseline.log -Raw
+          if ($log -match '__imp_if_nametoindex') {
+            Write-Host 'x.py baseline hit __imp_if_nametoindex'
+          } else {
+            Write-Host 'x.py baseline did not hit __imp_if_nametoindex'
           }
 
-      - name: Upload Cargo baseline log
+      - name: Upload x.py baseline log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cargo-baseline-log
-          path: cargo-baseline.log
+          name: xpy-baseline-log
+          path: xpy-baseline.log
 
-  cargo-patched:
+  xpy-patched:
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
 
-      - uses: dtolnay/rust-toolchain@stable
-
       - uses: actions/checkout@v5
         with:
-          repository: rust-lang/cargo
-          ref: 8e799e11cd904bf8682f106b805e619b544cf412
-          path: cargo-src
+          repository: rust-lang/rust
+          ref: f0ff0628bc708f087e33d57efe406b8cff323a1f
+          submodules: recursive
+          path: rust-src
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Configure Rust patched variant
+        shell: pwsh
+        run: |
+          Push-Location rust-src
+          python configure.py `
+            --build=x86_64-pc-windows-msvc `
+            --enable-lld `
+            --enable-verbose-tests `
+            --enable-sccache `
+            --disable-manage-submodules `
+            --enable-locked-deps `
+            --enable-cargo-native-static `
+            --set rust.codegen-units-std=1 `
+            --set llvm.download-ci-llvm=if-unchanged `
+            --set build.print-step-timings `
+            --set build.metrics `
+            --set rust.lld=true `
+            --set build.optimized-compiler-builtins
+          Pop-Location
 
       - name: Fetch Cargo dependencies
         shell: pwsh
         run: |
-          Push-Location cargo-src
-          cargo fetch
+          Push-Location rust-src\src\tools\cargo
+          cargo fetch --locked
           Pop-Location
 
       - name: Patch curl-sys build.rs
@@ -124,18 +140,29 @@ jobs:
           Set-Content -Path $buildRs -Value $updated
           Write-Host "patched $buildRs"
 
-      - name: Build Cargo with iphlpapi
+      - name: Run x.py patched variant
         shell: pwsh
+        continue-on-error: true
         run: |
-          Push-Location cargo-src
-          cargo build -vv --release --features all-static -p cargo *>&1 | Tee-Object ..\cargo-patched.log
+          Push-Location rust-src
+          python x.py --stage 2 test src/tools/cargo *>&1 | Tee-Object ..\xpy-patched.log
           $code = $LASTEXITCODE
           Pop-Location
           exit $code
 
-      - name: Upload Cargo patched log
+      - name: Inspect x.py patched result
+        shell: pwsh
+        run: |
+          $log = Get-Content xpy-patched.log -Raw
+          if ($log -match '__imp_if_nametoindex') {
+            Write-Host 'x.py patched variant still hit __imp_if_nametoindex'
+          } else {
+            Write-Host 'x.py patched variant did not hit __imp_if_nametoindex'
+          }
+
+      - name: Upload x.py patched log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cargo-patched-log
-          path: cargo-patched.log
+          name: xpy-patched-log
+          path: xpy-patched.log

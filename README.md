@@ -5,19 +5,23 @@ link failure:
 
 `LNK2019 unresolved external symbol __imp_if_nametoindex`
 
-It contains two levels of reproduction:
+The current workflow is intentionally shaped like the real Rust CI path instead
+of a plain `cargo build`.
 
-- `minimal`: a tiny crate that pins `curl-sys = 0.4.86` and enables vendored
-  `static-curl`
-- `cargo-baseline` / `cargo-patched`: a closer repro that checks out Cargo at
-  `8e799e11cd` and builds `cargo --features all-static` on `windows-2025`
+It checks out `rust-lang/rust` at
+`f0ff0628bc708f087e33d57efe406b8cff323a1f`, initializes submodules, configures
+the tree with the same key knobs as the failing `x86_64-msvc-ext1` job, and
+runs:
 
-The workflow runs on `windows-2025` and compares:
+`python x.py --stage 2 test src/tools/cargo`
 
-- the unmodified path
-- a patched path that adds `cargo:rustc-link-lib=iphlpapi` inside
-  `curl-sys/build.rs`
+Two variants are compared on public `windows-2025` runners:
 
-If the baseline Cargo build fails with `__imp_if_nametoindex` and the patched
-build succeeds, that is strong evidence that the missing `Iphlpapi.lib` link is
-the real cause.
+- `xpy-baseline`: unmodified path
+- `xpy-patched`: same path, but patches downloaded
+  `curl-sys 0.4.86+curl-8.19.0/build.rs` to add
+  `cargo:rustc-link-lib=iphlpapi`
+
+If the baseline `x.py` build hits `__imp_if_nametoindex` and the patched build
+stops doing so, that is strong end-to-end evidence that the missing
+`Iphlpapi.lib` link is the real cause.

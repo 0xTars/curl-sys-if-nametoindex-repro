@@ -1,0 +1,85 @@
+name: repro
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  baseline:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build baseline
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          cargo build -vv *>&1 | Tee-Object baseline.log
+          exit $LASTEXITCODE
+
+      - name: Check baseline failure shape
+        shell: pwsh
+        run: |
+          $log = Get-Content baseline.log -Raw
+          if ($log -notmatch '__imp_if_nametoindex') {
+            throw 'baseline did not fail with __imp_if_nametoindex'
+          }
+
+      - name: Upload baseline log
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-log
+          path: baseline.log
+
+  patched:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Fetch dependencies
+        shell: pwsh
+        run: cargo fetch
+
+      - name: Patch curl-sys build.rs
+        shell: pwsh
+        run: |
+          $buildRs = Get-ChildItem "$env:USERPROFILE\.cargo\registry\src" -Recurse -Filter build.rs |
+            Where-Object { $_.FullName -match 'curl-sys-0\.4\.86\+curl-8\.19\.0' } |
+            Select-Object -First 1 -ExpandProperty FullName
+
+          if (-not $buildRs) {
+            throw 'could not locate curl-sys 0.4.86 build.rs'
+          }
+
+          $content = Get-Content $buildRs -Raw
+          $needle = '        println!("cargo:rustc-link-lib=crypt32");'
+          $replacement = @'
+        println!("cargo:rustc-link-lib=crypt32");
+        println!("cargo:rustc-link-lib=iphlpapi");
+'@
+
+          if ($content -notmatch 'cargo:rustc-link-lib=crypt32') {
+            throw 'expected crypt32 link line was not found'
+          }
+
+          $updated = $content.Replace($needle, $replacement.TrimEnd("`r", "`n"))
+          Set-Content -Path $buildRs -Value $updated
+          Write-Host "patched $buildRs"
+
+      - name: Build with iphlpapi
+        shell: pwsh
+        run: |
+          cargo build -vv *>&1 | Tee-Object patched.log
+          exit $LASTEXITCODE
+
+      - name: Upload patched log
+        uses: actions/upload-artifact@v4
+        with:
+          name: patched-log
+          path: patched.log

@@ -1,0 +1,7 @@
+[package]
+name = "curl-sys-if-nametoindex-repro"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+curl-sys = { version = "=0.4.86", features = ["static-curl"] }

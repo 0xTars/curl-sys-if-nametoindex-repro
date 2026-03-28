@@ -7,44 +7,96 @@ on:
       - main
 
 jobs:
-  baseline:
+  minimal:
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Build baseline
+      - name: Build minimal baseline
         shell: pwsh
         continue-on-error: true
         run: |
-          cargo build -vv *>&1 | Tee-Object baseline.log
+          cargo build -vv *>&1 | Tee-Object minimal.log
           exit $LASTEXITCODE
 
-      - name: Check baseline failure shape
+      - name: Inspect minimal result
         shell: pwsh
         run: |
-          $log = Get-Content baseline.log -Raw
-          if ($log -notmatch '__imp_if_nametoindex') {
-            throw 'baseline did not fail with __imp_if_nametoindex'
+          $log = Get-Content minimal.log -Raw
+          if ($log -match '__imp_if_nametoindex') {
+            Write-Host 'minimal repro hit __imp_if_nametoindex'
+          } else {
+            Write-Host 'minimal repro did not hit __imp_if_nametoindex'
           }
 
-      - name: Upload baseline log
+      - name: Upload minimal log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: baseline-log
-          path: baseline.log
+          name: minimal-log
+          path: minimal.log
 
-  patched:
+  cargo-baseline:
     runs-on: windows-2025
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Fetch dependencies
+      - uses: actions/checkout@v5
+        with:
+          repository: rust-lang/cargo
+          ref: 8e799e11cd904bf8682f106b805e619b544cf412
+          path: cargo-src
+
+      - name: Build Cargo all-static
         shell: pwsh
-        run: cargo fetch
+        continue-on-error: true
+        run: |
+          Push-Location cargo-src
+          cargo build -vv --release --features all-static -p cargo *>&1 | Tee-Object ..\cargo-baseline.log
+          $code = $LASTEXITCODE
+          Pop-Location
+          exit $code
+
+      - name: Check Cargo baseline failure shape
+        shell: pwsh
+        run: |
+          $log = Get-Content cargo-baseline.log -Raw
+          if ($log -notmatch '__imp_if_nametoindex') {
+            throw 'cargo baseline did not fail with __imp_if_nametoindex'
+          }
+
+      - name: Upload Cargo baseline log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-baseline-log
+          path: cargo-baseline.log
+
+  cargo-patched:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/checkout@v5
+        with:
+          repository: rust-lang/cargo
+          ref: 8e799e11cd904bf8682f106b805e619b544cf412
+          path: cargo-src
+
+      - name: Fetch Cargo dependencies
+        shell: pwsh
+        run: |
+          Push-Location cargo-src
+          cargo fetch
+          Pop-Location
 
       - name: Patch curl-sys build.rs
         shell: pwsh
@@ -72,14 +124,18 @@ jobs:
           Set-Content -Path $buildRs -Value $updated
           Write-Host "patched $buildRs"
 
-      - name: Build with iphlpapi
+      - name: Build Cargo with iphlpapi
         shell: pwsh
         run: |
-          cargo build -vv *>&1 | Tee-Object patched.log
-          exit $LASTEXITCODE
+          Push-Location cargo-src
+          cargo build -vv --release --features all-static -p cargo *>&1 | Tee-Object ..\cargo-patched.log
+          $code = $LASTEXITCODE
+          Pop-Location
+          exit $code
 
-      - name: Upload patched log
+      - name: Upload Cargo patched log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: patched-log
-          path: patched.log
+          name: cargo-patched-log
+          path: cargo-patched.log

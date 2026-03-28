@@ -20,6 +20,7 @@ jobs:
         with:
           repository: rust-lang/rust
           ref: f0ff0628bc708f087e33d57efe406b8cff323a1f
+          fetch-depth: 2
           submodules: recursive
           path: rust-src
 
@@ -52,7 +53,7 @@ jobs:
         continue-on-error: true
         run: |
           Push-Location rust-src
-          python x.py --stage 2 test src/tools/cargo *>&1 | Tee-Object ..\xpy-baseline.log
+          python x.py --stage 2 test src/tools/cargotest src/tools/cargo *>&1 | Tee-Object ..\xpy-baseline.log
           $code = $LASTEXITCODE
           Pop-Location
           exit $code
@@ -86,6 +87,7 @@ jobs:
         with:
           repository: rust-lang/rust
           ref: f0ff0628bc708f087e33d57efe406b8cff323a1f
+          fetch-depth: 2
           submodules: recursive
           path: rust-src
 
@@ -151,7 +153,7 @@ jobs:
         continue-on-error: true
         run: |
           Push-Location rust-src
-          python x.py --stage 2 test src/tools/cargo *>&1 | Tee-Object ..\xpy-patched.log
+          python x.py --stage 2 test src/tools/cargotest src/tools/cargo *>&1 | Tee-Object ..\xpy-patched.log
           $code = $LASTEXITCODE
           Pop-Location
           exit $code

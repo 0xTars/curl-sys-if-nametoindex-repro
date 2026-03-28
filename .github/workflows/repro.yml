@@ -59,10 +59,10 @@ jobs:
 
           $content = Get-Content $buildRs -Raw
           $needle = '        println!("cargo:rustc-link-lib=crypt32");'
-          $replacement = @'
-        println!("cargo:rustc-link-lib=crypt32");
-        println!("cargo:rustc-link-lib=iphlpapi");
-'@
+          $replacement = @(
+            '        println!("cargo:rustc-link-lib=crypt32");'
+            '        println!("cargo:rustc-link-lib=iphlpapi");'
+          ) -join "`n"
 
           if ($content -notmatch 'cargo:rustc-link-lib=crypt32') {
             throw 'expected crypt32 link line was not found'

@@ -34,7 +34,6 @@ jobs:
             --build=x86_64-pc-windows-msvc `
             --enable-lld `
             --enable-verbose-tests `
-            --enable-sccache `
             --disable-manage-submodules `
             --enable-locked-deps `
             --enable-cargo-native-static `
@@ -101,7 +100,6 @@ jobs:
             --build=x86_64-pc-windows-msvc `
             --enable-lld `
             --enable-verbose-tests `
-            --enable-sccache `
             --disable-manage-submodules `
             --enable-locked-deps `
             --enable-cargo-native-static `
